@@ -17,9 +17,16 @@ OS LAB ASSIGNMENT 2: SHELL
 #define TOKEN_DELIMITERS2 ":="      //used for paths
 #define USER_PROMPT 0
 #define NORMAL_PROMPT 1
+#define MAX_HISTORY_SIZE 50
+#define MAX_COMMAND_LENGTH 64
+
+//globals
+char history[MAX_HISTORY_SIZE][MAX_COMMAND_LENGTH];
+int history_count = 0;
 
 //function prototypes
 char** tokenize_string(char*,char*);
+void add_to_history(const char* command);
 char** getargs();
 int builtin_cd(char**);
 int executeShell(char**,char**);
@@ -62,6 +69,24 @@ char** tokenize_string(char* line,char* token_delimiters)
 	return arguments;
 }
 
+void add_to_history(const char* command) 
+{
+    if (history_count < MAX_HISTORY_SIZE) 
+    {
+        strcpy(history[history_count], command);
+        history_count++;
+    } 
+    else 
+    {
+        // Shift elements to make space for the new command
+        for (int i = 0; i < MAX_HISTORY_SIZE - 1; i++) 
+        {
+            strcpy(history[i], history[i + 1]);
+        }
+        strcpy(history[MAX_HISTORY_SIZE - 1], command);
+    }
+}
+
 //get arguments from the line
 char** getargs()
 {
@@ -81,6 +106,9 @@ char** getargs()
 			exit(errno);
 		}
 	}
+	
+	// Add command to history
+    	add_to_history(line);
 
 	char** arguments = tokenize_string(line,TOKEN_DELIMITERS1);  //seperates options and arguments
 
@@ -105,16 +133,21 @@ int builtin_cd(char** args)
 	return 1;
 }
 
-int executeShell(char** args, char** PATHS) {
+int executeShell(char** args, char** PATHS) 
+{
     char complete_path[256];
-    if (args[0] == NULL) {
+    if (args[0] == NULL) 
+    {
         return 1; // No command was entered
     }
 
     // Check for built-in functions: cd, exit
-    if (strcmp(args[0], "cd") == 0) {
+    if (strcmp(args[0], "cd") == 0) 
+    {
         return builtin_cd(args);
-    } else if (strcmp(args[0], "exit") == 0) {
+    } 
+    else if (strcmp(args[0], "exit") == 0) 
+    {
         exit(0);
         return 0;
     }
@@ -123,12 +156,16 @@ int executeShell(char** args, char** PATHS) {
     int status = -1;
 
     pid = fork(); // fork - system call
-    if (pid == 0) {
-        // Iterate over args to check for input and output redirection
-        for (int j = 1; args[j] != NULL; j++) {
-            if (strcmp(args[j], "<") == 0) { // Input redirection
+    if (pid == 0) 
+    {
+        // Iterate over args to check for input and output redirection and pipe
+        for (int j = 1; args[j] != NULL; j++) 
+        {
+            if (strcmp(args[j], "<") == 0)   // Input redirection
+            { 
                 int fd = open(args[j + 1], O_RDONLY);
-                if (fd == -1) {
+                if (fd == -1) 
+                {
                     perror("Shell says");
                     exit(errno);
                 }
@@ -136,9 +173,12 @@ int executeShell(char** args, char** PATHS) {
                 close(fd);
                 args[j] = NULL; // Remove "<"
                 args[j + 1] = NULL;
-            } else if (strcmp(args[j], ">") == 0) { // Output redirection
+            } 
+            else if (strcmp(args[j], ">") == 0)  // Output redirection
+            { 
                 int fd = open(args[j + 1], O_WRONLY | O_CREAT | O_TRUNC, 0644);
-                if (fd == -1) {
+                if (fd == -1) 
+                {
                     perror("Shell says");
                     exit(errno);
                 }
@@ -146,47 +186,57 @@ int executeShell(char** args, char** PATHS) {
                 close(fd);
                 args[j] = NULL; // Remove ">"
                 args[j + 1] = NULL;
-            } else if (strcmp(args[j], "|") == 0) { // Pipe
+            } 
+            else if (strcmp(args[j], "|") == 0)  // Pipe 
+            { 
                 // Create a pipe
                 int pipefd[2];
-                if (pipe(pipefd) == -1) {
+                if (pipe(pipefd) == -1) 
+                {
                     perror("Pipe failed");
                     exit(errno);
                 }
 
-                pid_t child_pid = fork();
-                if (child_pid == -1) {
+                int child_pid = fork();
+                if (child_pid == -1) 
+                {
                     perror("Fork failed");
                     exit(errno);
-                } else if (child_pid == 0) {
-                    // Child process: redirect output to pipe
-                    close(pipefd[0]); // Close read end of the pipe
-                    dup2(pipefd[1], STDOUT_FILENO); // Redirect stdout to pipe
-                    close(pipefd[1]); // Close write end of the pipe
+                } 
+                else if (child_pid == 0) 
+                {
+                	// Child process: redirect output to pipe
+	            	close(pipefd[0]); // Close read end of the pipe
+	            	dup2(pipefd[1], STDOUT_FILENO); // Redirect stdout to pipe
+	            	close(pipefd[1]); // Close write end of the pipe
 
-                    // Execute command before the pipe symbol
-                    char** left_args = args;
-                    left_args[j] = NULL; // Terminate args before the pipe symbol
-                    executeShell(left_args, PATHS);
-                    exit(0);
-                } else {
-                    // Parent process: redirect input from pipe
-                    close(pipefd[1]); // Close write end of the pipe
-                    dup2(pipefd[0], STDIN_FILENO); // Redirect stdin from pipe
-                    close(pipefd[0]); // Close read end of the pipe
+	            	// Execute command before the pipe symbol
+	            	char** left_args = args;
+	            	left_args[j] = NULL; // Terminate args before the pipe symbol
+	            	executeShell(left_args, PATHS);
+	            	exit(0);
+                } 
+                else 
+                {
+                    	// Parent process: redirect input from pipe
+                    	close(pipefd[1]); // Close write end of the pipe
+                    	dup2(pipefd[0], STDIN_FILENO); // Redirect stdin from pipe
+                    	close(pipefd[0]); // Close read end of the pipe
 
-                    // Execute command after the pipe symbol
-                    char** right_args = args + j + 1;
-                    executeShell(right_args, PATHS);
-                    exit(0);
+	            	// Execute command after the pipe symbol
+        	    	char** right_args = args + j + 1;
+	            	executeShell(right_args, PATHS);
+	            	exit(0);
                 }
             }
         }
 
         // If no pipe symbol found, execute single command
-        for (int i = 0; PATHS[i] != NULL; i++) {
+        for (int i = 0; PATHS[i] != NULL; i++) 
+        {
             snprintf(complete_path, sizeof(complete_path), "%s/%s", PATHS[i], args[0]);
-            if (access(complete_path, X_OK) == 0) {
+            if (access(complete_path, X_OK) == 0) 
+            {
                 execv(complete_path, args); // Execute command
                 perror("execv");
                 exit(errno);
@@ -194,13 +244,14 @@ int executeShell(char** args, char** PATHS) {
         }
         fprintf(stderr, "Command not found: %s\n", args[0]);
         exit(EXIT_FAILURE);
-    } else {
+    } 
+    else 
+    {
         waitpid(pid, &status, 0);
     }
 
     return 1;
 }
-
 
 
 int main() 
@@ -238,7 +289,6 @@ int main()
 		{
 			continue;
 		}
-		
 
 		/*allows the user to change the prompt to a particular string and revert back to normal prompt*/
 		if(strcmp(args[0],"PS1=\\w$")==0)   //revert back to normal prompt
@@ -266,6 +316,14 @@ int main()
 			}
 			PATHS[path_counter] = NULL;
 		}
+		else if (strcmp(args[0],"history")==0)  //Print history
+		{
+			
+		    for (int i = 0; i < history_count; i++) 
+		    {
+			printf("%d  %s", i + 1, history[i]);
+		    }
+		}
 		else
 		{
 			flag = executeShell(args,PATHS);    //execute the shell (contains fork-exec)
@@ -273,6 +331,7 @@ int main()
 		
 		free(args);
 	}
+	
 	return 0;
 }
 
