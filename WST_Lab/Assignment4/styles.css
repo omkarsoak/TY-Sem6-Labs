@@ -1,0 +1,82 @@
+/* Apply Montserrat font to body */
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    color: black; /* Set font color to black */
+}
+
+/* Reset default margin and padding */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Apply basic styles to body */
+body {
+    padding: 20px;
+    background-color: salmon;
+}
+
+/* Apply styles to page title */
+h1 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: black;
+}
+
+/* Apply styles to form container */
+form {
+    max-width: 800px;
+    margin: 0 auto;
+    background-color: white; /* Change form container background color */
+    padding: 20px;
+    border-radius: 5px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+/* Apply styles to labels */
+label {
+    display: block;
+    margin-bottom: 5px;
+    color: black; /* Set label color to black */
+}
+
+/* Apply styles to input fields */
+input[type="text"], input[type="email"] {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 10px;
+    border: 1px solid black; /* Change input field border color */
+    border-radius: 4px;
+    box-sizing: border-box;
+    background-color: salmon; /* Change input field background color */
+    color: white; /* Set input field text color to black */
+}
+
+/* Apply styles to buttons */
+button {
+    padding: 10px 20px;
+    color: black;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    background-color: #B3A398; /* Change button background color */
+    transition: all 0.3s ease;
+}
+
+/* Apply styles to submit button */
+button[type="submit"] {
+    justify-content: center;
+    background-color: gray; /* Change submit button background color */
+}
+
+/* Apply styles to reset button */
+button[type="reset"] {
+    justify-content: center;
+    background-color: gray;
+}
+
+/* Apply styles to hover state of buttons */
+button:hover {
+    background-color: lightgray;
+}

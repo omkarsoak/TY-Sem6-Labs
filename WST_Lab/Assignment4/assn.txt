@@ -1,0 +1,25 @@
+Create a webpage that displays a form and takes the following inputs from the user:
+
+Input	Validation / Constraints
+First Name	Minimum Length 2
+Last Name	Minimum Length 2
+User Name	Minimum length 4, alphanumeric, unique
+Email ID	Valid email id (syntactically), unique
+State	Minimum length 2
+Country	Minimum length 2
+
+To submit and reset the form create two buttons. Send the data to the PHP backend, validate,  and store it in a database. Use JavaScript for client-side 
+validation of user input and show required alerts/messages to the user.    
+Create another page in PHP that shows all the profiles stored on the database in the form of a list of cards.Try to reuse HTML code using PHP. 
+Use seperate CSS & JavaScript files and include them using <style>, <script> tags. You are free to use any software stack such as XAMPP, WAMP, LAMP, or docker containers.
+
+
+JS
+// Client-side validation 
+    /*
+   
+    */
+
+     
+   
+    
