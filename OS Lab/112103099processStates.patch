@@ -1,0 +1,220 @@
+diff --git a/Makefile b/Makefile
+index 09d790c..c63b8bf 100644
+--- a/Makefile
++++ b/Makefile
+@@ -181,6 +181,7 @@ UPROGS=\
+ 	_usertests\
+ 	_wc\
+ 	_zombie\
++	_newsyscall\
+ 
+ fs.img: mkfs README $(UPROGS)
+ 	./mkfs fs.img README $(UPROGS)
+diff --git a/defs.h b/defs.h
+index 82fb982..7118bc3 100644
+--- a/defs.h
++++ b/defs.h
+@@ -120,6 +120,9 @@ void            userinit(void);
+ int             wait(void);
+ void            wakeup(void*);
+ void            yield(void);
++void		num_forked(void);
++void		num_scheduled(void);
++void		table_stats(void);
+ 
+ // swtch.S
+ void            swtch(struct context**, struct context*);
+@@ -164,6 +167,7 @@ void            idtinit(void);
+ extern uint     ticks;
+ void            tvinit(void);
+ extern struct spinlock tickslock;
++void 		print_trap_stats(void);
+ 
+ // uart.c
+ void            uartinit(void);
+diff --git a/proc.c b/proc.c
+index 806b1b1..f1282d8 100644
+--- a/proc.c
++++ b/proc.c
+@@ -7,6 +7,10 @@
+ #include "proc.h"
+ #include "spinlock.h"
+ 
++//define global stats array
++#define NUM_STATS 7
++int stats[NUM_STATS];
++
+ struct {
+   struct spinlock lock;
+   struct proc proc[NPROC];
+@@ -184,6 +188,7 @@ fork(void)
+   struct proc *np;
+   struct proc *curproc = myproc();
+ 
++  stats[0]+=1;   //add to forked count
+   // Allocate process.
+   if((np = allocproc()) == 0){
+     return -1;
+@@ -376,6 +381,8 @@ sched(void)
+     panic("sched running");
+   if(readeflags()&FL_IF)
+     panic("sched interruptible");
++
++  stats[4]+=1;  //add to scheduled count
+   intena = mycpu()->intena;
+   swtch(&p->context, mycpu()->scheduler);
+   mycpu()->intena = intena;
+@@ -532,3 +539,42 @@ procdump(void)
+     cprintf("\n");
+   }
+ }
++
++void num_forked(void)
++{
++	cprintf("Number of forked processes: %d\n",stats[0]);
++}
++
++void num_scheduled(void)
++{
++	cprintf("Number of scheduled processes: %d\n",stats[4]);
++}
++
++void table_stats(void)
++{
++	struct proc *p;
++	for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
++	{
++		switch(p->state)
++		{
++      			case UNUSED:
++				break;
++      			case EMBRYO:
++        			break;
++      			case RUNNABLE:
++        			stats[1]++;
++        			break;
++      			case SLEEPING:
++        			stats[2]++;
++        			break;
++      			case RUNNING:
++        			break;
++      			case ZOMBIE:
++        			stats[3]++;
++        			break;
++    		}
++	}
++	cprintf("Number of runnable processes: %d\n",stats[1]);
++	cprintf("Number of sleeping processes :%d\n",stats[2]);
++	cprintf("Number of zombie processes: %d\n",stats[3]);
++}
+diff --git a/syscall.c b/syscall.c
+index ee85261..fd3d624 100644
+--- a/syscall.c
++++ b/syscall.c
+@@ -103,6 +103,7 @@ extern int sys_unlink(void);
+ extern int sys_wait(void);
+ extern int sys_write(void);
+ extern int sys_uptime(void);
++extern int sys_stats(void);
+ 
+ static int (*syscalls[])(void) = {
+ [SYS_fork]    sys_fork,
+@@ -126,6 +127,7 @@ static int (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_stats]   sys_stats,
+ };
+ 
+ void
+diff --git a/syscall.h b/syscall.h
+index bc5f356..d5713c0 100644
+--- a/syscall.h
++++ b/syscall.h
+@@ -20,3 +20,4 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_stats  22
+diff --git a/sysproc.c b/sysproc.c
+index 0686d29..9b75c38 100644
+--- a/sysproc.c
++++ b/sysproc.c
+@@ -89,3 +89,12 @@ sys_uptime(void)
+   release(&tickslock);
+   return xticks;
+ }
++
++int sys_stats(void)
++{
++	num_forked();
++	num_scheduled();
++	table_stats();
++	print_trap_stats();
++	return 0;
++}
+diff --git a/trap.c b/trap.c
+index 41c66eb..726acf2 100644
+--- a/trap.c
++++ b/trap.c
+@@ -8,6 +8,10 @@
+ #include "traps.h"
+ #include "spinlock.h"
+ 
++//defined global trap stats array
++#define NUM_TRAP_STATS 2
++int trap_stats[NUM_TRAP_STATS];
++
+ // Interrupt descriptor table (shared by all CPUs).
+ struct gatedesc idt[256];
+ extern uint vectors[];  // in vectors.S: array of 256 entry pointers
+@@ -40,6 +44,9 @@ trap(struct trapframe *tf)
+     if(myproc()->killed)
+       exit();
+     myproc()->tf = tf;
++
++    trap_stats[0]+=1;
++
+     syscall();
+     if(myproc()->killed)
+       exit();
+@@ -64,6 +71,7 @@ trap(struct trapframe *tf)
+     // Bochs generates spurious IDE1 interrupts.
+     break;
+   case T_IRQ0 + IRQ_KBD:
++    trap_stats[1]+=1;
+     kbdintr();
+     lapiceoi();
+     break;
+@@ -110,3 +118,10 @@ trap(struct trapframe *tf)
+   if(myproc() && myproc()->killed && (tf->cs&3) == DPL_USER)
+     exit();
+ }
++
++void print_trap_stats(void)
++{
++	cprintf("Number of keyboard interrupts: %d\n",trap_stats[1]);
++	cprintf("Number of total traps: %d\n",trap_stats[0]);
++}
++
+diff --git a/user.h b/user.h
+index 4f99c52..232d789 100644
+--- a/user.h
++++ b/user.h
+@@ -23,6 +23,7 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int stats(void);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/usys.S b/usys.S
+index 8bfd8a1..7953468 100644
+--- a/usys.S
++++ b/usys.S
+@@ -29,3 +29,4 @@ SYSCALL(getpid)
+ SYSCALL(sbrk)
+ SYSCALL(sleep)
+ SYSCALL(uptime)
++SYSCALL(stats)

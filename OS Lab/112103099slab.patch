@@ -1,0 +1,168 @@
+diff --git a/file.c b/file.c
+index 24b32c2..71e32d4 100644
+--- a/file.c
++++ b/file.c
+@@ -16,28 +16,108 @@ struct {
+   struct file file[NFILE];
+ } ftable;
+ 
+-void
++#define SLAB_SIZE 8  // No. file structs per slab
++
++struct slab 
++{
++    struct slab *next;      
++    int count;              // Number of available file structs in this slab
++    struct file files[SLAB_SIZE];  // Array of file structs
++};
++
++struct slab slab_allocator;     // Global variable for the slab allocator
++struct spinlock slab_lock;      // spinlock for slab allocator
++static struct spinlock file_lock; // Static spinlock for file-related operations
++
++void init_slab() 
++{
++    initlock(&slab_lock, "slab_lock");     // Initialize the slab lock
++    memset(&slab_allocator, 0, sizeof(struct slab));   // Clear the slab allocator structure
++}
++
++//file alloc helper function
++struct file *alloc_file() 
++{
++    struct file *f;
++    acquire(&slab_lock);    
++    
++    //if no available file structs in the current slab
++    if (slab_allocator.count == 0) 
++    {  
++        struct slab *slab = (struct slab *) kalloc();   // Cast the return value of kalloc() to struct slab *
++        // if memory alloc failed
++        if (slab == 0) 
++        {    
++            release(&slab_lock);    
++            return 0;  
++        }
++        
++        slab->count = SLAB_SIZE;  
++        for (int i = 0; i < SLAB_SIZE; i++) 
++        {
++            slab->files[i].ref = 0;    //init ref count of each file struct
++            slab->files[i].type = FD_NONE; //init file type of each file struct
++        }
++        //link the new slab to the list of slabs
++        slab->next = slab_allocator.next;  
++        slab_allocator.next = slab;    
++        slab_allocator.count = SLAB_SIZE;  
++    }
++    
++    //file struct available
++    f = &slab_allocator.next->files[--slab_allocator.count]; //get file struct from current slab
++    release(&slab_lock);
++       
++    return f;   //return allocated file struct
++}
++
++//file close helper function
++void free_file(struct file *f) 
++{
++    if (f == 0)
++    {
++        panic("free_file with null");
++    }
++    
++    acquire(&slab_lock);
++    
++    //if current slab is full
++    if (slab_allocator.count == SLAB_SIZE) 
++    {   
++        panic("too many free_file");
++    }
++    
++    slab_allocator.next->files[slab_allocator.count++] = *f;  //add the freed file struct back to the slab
++    
++    release(&slab_lock);
++}
++
++void 
+ fileinit(void)
+ {
+-  initlock(&ftable.lock, "ftable");
++  init_slab();
++  initlock(&file_lock, "file_lock"); // Initialize the file lock
+ }
+ 
+-// Allocate a file structure.
+-struct file*
++// Allocate a file struct
++struct file *
+ filealloc(void)
+ {
+   struct file *f;
+-
+-  acquire(&ftable.lock);
+-  for(f = ftable.file; f < ftable.file + NFILE; f++){
+-    if(f->ref == 0){
+-      f->ref = 1;
+-      release(&ftable.lock);
+-      return f;
+-    }
++  acquire(&file_lock); 
++  f = alloc_file(); //use slab allocator (helper function)
++  
++  //allocation failed
++  if(f == 0) 
++  {
++    release(&file_lock);
++    return 0;
+   }
+-  release(&ftable.lock);
+-  return 0;
++  
++  //allocation successfull
++  f->ref = 1;
++  release(&file_lock);
++  return f;
+ }
+ 
+ // Increment ref count for file f.
+@@ -56,27 +136,23 @@ filedup(struct file *f)
+ void
+ fileclose(struct file *f)
+ {
+-  struct file ff;
+-
+-  acquire(&ftable.lock);
+-  if(f->ref < 1)
++  if(f == 0 || f->ref < 1)
++  {
+     panic("fileclose");
+-  if(--f->ref > 0){
+-    release(&ftable.lock);
++  }
++  
++  acquire(&file_lock);
++  
++  //reference count is greater than 0
++  if(--f->ref > 0)
++  {
++    release(&file_lock); 
+     return;
+   }
+-  ff = *f;
+-  f->ref = 0;
++  
+   f->type = FD_NONE;
+-  release(&ftable.lock);
+-
+-  if(ff.type == FD_PIPE)
+-    pipeclose(ff.pipe, ff.writable);
+-  else if(ff.type == FD_INODE){
+-    begin_op();
+-    iput(ff.ip);
+-    end_op();
+-  }
++  release(&file_lock);
++  free_file(f);  //use slab allocator (helper function)
+ }
+ 
+ // Get metadata about file f.
